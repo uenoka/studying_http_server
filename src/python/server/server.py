@@ -23,12 +23,12 @@ class WebServer:
                 # 外部からの接続を待ち、接続があったらコネクションを確立する
                 print("=== Server: クライアントからの接続を待ちます ===")
                 (client_socket, address) = server_socket.accept()
-                print(f"=== Server: クライアントとの接続が完了しました remote_address: {address} ===")
+                print(
+                    f"=== Server: クライアントとの接続が完了しました remote_address: {address} ===")
 
                 # クライアントを処理するスレッドを作成
                 thread = WorkerThread(client_socket, address)
                 # スレッドを実行
-                
                 thread.start()
 
         finally:
