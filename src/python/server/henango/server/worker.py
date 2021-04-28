@@ -1,6 +1,7 @@
 import os
 import re
 import traceback
+import settings
 from datetime import datetime
 from socket import socket
 from threading import Thread
@@ -11,7 +12,7 @@ from henango.http.response import HTTPResponse
 from urls import URL_VIEW
 
 
-class WorkerThread(Thread):
+class Worker(Thread):
     # 実行ファイルのあるディレクトリ
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     # 静的配信するファイルを置くディレクトリ
@@ -132,10 +133,10 @@ class WorkerThread(Thread):
         リクエストpathから、staticファイルの内容を取得する
         """
 
-        # pathの先頭の/を削除し、相対パスにしておく
+        default_static_root = os.path.join(os.path.dirname(__file__),"../../static")
+        static_root = getattr(settings,"STATIC_ROOT",default_static_root)
         relative_path = path.lstrip("/")
-        # ファイルのpathを取得
-        static_file_path = os.path.join(self.STATIC_ROOT, relative_path)
+        static_file_path = os.path.join(static_root,relative_path)
 
         with open(static_file_path, "rb") as f:
             return f.read()
