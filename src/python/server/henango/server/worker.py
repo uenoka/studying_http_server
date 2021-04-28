@@ -1,23 +1,19 @@
 import os
 import re
 import traceback
-import settings
 from datetime import datetime
+from re import Match
 from socket import socket
 from threading import Thread
-from typing import Tuple
+from typing import Tuple, Optional
 
+import settings
 from henango.http.request import HTTPRequest
 from henango.http.response import HTTPResponse
 from urls import URL_VIEW
 
 
 class Worker(Thread):
-    # 実行ファイルのあるディレクトリ
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    # 静的配信するファイルを置くディレクトリ
-    STATIC_ROOT = os.path.join(BASE_DIR, "static")
-
     # 拡張子とMIME Typeの対応
     MIME_TYPES = {
         "html": "text/html; charset=UTF-8",
@@ -58,18 +54,20 @@ class Worker(Thread):
             # HTTPリクエストをパースする
             request = self.parse_http_request(request_bytes)
 
-            # pathに対応するview関数があれば、関数を取得して呼び出し、レスポンスを生成する
-            if request.path in URL_VIEW:
-                view = URL_VIEW[request.path]
-                response = view(request)
+            # pathにマッチするurl_patternを探し、見つかればviewからレスポンスを生成する
+            for url_pattern, view in URL_VIEW.items():
+                match = self.url_match(url_pattern, request.path)
+                if match:
+                    request.params.update(match.groupdict())
+                    response = view(request)
+                    break
 
-            # pathがそれ以外のときは、静的ファイルからレスポンスを生成する
+            # pathにマッチするurl_patternが見つからなければ、静的ファイルからレスポンスを生成する
             else:
                 try:
                     response_body = self.get_static_file_content(request.path)
                     content_type = None
-                    response = HTTPResponse(
-                        body=response_body, content_type=content_type, status_code=200)
+                    response = HTTPResponse(body=response_body, content_type=content_type, status_code=200)
 
                 except OSError:
                     # レスポンスを取得できなかった場合は、ログを出力して404を返す
@@ -77,8 +75,7 @@ class Worker(Thread):
 
                     response_body = b"<html><body><h1>404 Not Found</h1></body></html>"
                     content_type = "text/html;"
-                    response = HTTPResponse(
-                        body=response_body, content_type=content_type, status_code=404)
+                    response = HTTPResponse(body=response_body, content_type=content_type, status_code=404)
 
             # レスポンスラインを生成
             response_line = self.build_response_line(response)
@@ -87,8 +84,7 @@ class Worker(Thread):
             response_header = self.build_response_header(response, request)
 
             # レスポンス全体を生成する
-            response_bytes = (response_line + response_header +
-                              "\r\n").encode() + response.body
+            response_bytes = (response_line + response_header + "\r\n").encode() + response.body
 
             # クライアントへレスポンスを送信する
             self.client_socket.send(response_bytes)
@@ -101,8 +97,7 @@ class Worker(Thread):
 
         finally:
             # 例外が発生した場合も、発生しなかった場合も、TCP通信のcloseは行う
-            print(
-                f"=== Worker: クライアントとの通信を終了します remote_address: {self.client_address} ===")
+            print(f"=== Worker: クライアントとの通信を終了します remote_address: {self.client_address} ===")
             self.client_socket.close()
 
     def parse_http_request(self, request: bytes) -> HTTPRequest:
@@ -132,11 +127,13 @@ class Worker(Thread):
         """
         リクエストpathから、staticファイルの内容を取得する
         """
+        default_static_root = os.path.join(os.path.dirname(__file__), "../../static")
+        static_root = getattr(settings, "STATIC_ROOT", default_static_root)
 
-        default_static_root = os.path.join(os.path.dirname(__file__),"../../static")
-        static_root = getattr(settings,"STATIC_ROOT",default_static_root)
+        # pathの先頭の/を削除し、相対パスにしておく
         relative_path = path.lstrip("/")
-        static_file_path = os.path.join(static_root,relative_path)
+        # ファイルのpathを取得
+        static_file_path = os.path.join(static_root, relative_path)
 
         with open(static_file_path, "rb") as f:
             return f.read()
@@ -162,8 +159,7 @@ class Worker(Thread):
                 ext = ""
             # 拡張子からMIME Typeを取得
             # 知らない対応していない拡張子の場合はoctet-streamとする
-            response.content_type = self.MIME_TYPES.get(
-                ext, "application/octet-stream")
+            response.content_type = self.MIME_TYPES.get(ext, "application/octet-stream")
 
         response_header = ""
         response_header += f"Date: {datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')}\r\n"
@@ -173,3 +169,9 @@ class Worker(Thread):
         response_header += f"Content-Type: {response.content_type}\r\n"
 
         return response_header
+
+    def url_match(self, url_pattern: str, path: str) -> Optional[Match]:
+        # URLパターンを正規表現パターンに変換する
+        # ex) '/user/<user_id>/profile' => '/user/(?P<user_id>[^/]+)/profile'
+        re_pattern = re.sub(r"<(.+?)>", r"(?P<\1>[^/]+)", url_pattern)
+        return re.match(re_pattern, path)

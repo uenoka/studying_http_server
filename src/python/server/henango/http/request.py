@@ -6,7 +6,7 @@ class HTTPRequest:
     body: bytes
 
     def __init__(
-        self, path: str = "", method: str = "", http_version: str = "", headers: dict = None, body: bytes = b""
+        self, path: str = "", method: str = "", http_version: str = "", headers: dict = None, body: bytes = b"",params: dict = None,
     ):
         if headers is None:
             headers = {}
