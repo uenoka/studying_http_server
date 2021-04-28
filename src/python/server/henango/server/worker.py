@@ -9,6 +9,7 @@ from typing import Tuple
 import settings
 from henango.http.request import HTTPRequest
 from henango.http.response import HTTPResponse
+from henango.urls.resolver import URLResolver
 from urls import url_patterns
 
 
@@ -53,17 +54,14 @@ class Worker(Thread):
             # HTTPリクエストをパースする
             request = self.parse_http_request(request_bytes)
 
-            # pathにマッチするurl_patternを探し、見つかればviewからレスポンスを生成する
-            for url_pattern in url_patterns:
-                match = url_pattern.match(request.path)
-                if match:
-                    request.params.update(match.groupdict())
-                    view = url_pattern.view
-                    response = view(request)
-                    break
+            # URL解決を試みる
+            view = URLResolver().resolve(request)
 
-            # pathにマッチするurl_patternが見つからなければ、静的ファイルからレスポンスを生成する
+            if view:
+                # URL解決できた場合は、viewからレスポンスを取得する
+                response = view(request)
             else:
+                # URL解決できなかった場合は、静的ファイルからレスポンスを取得する
                 try:
                     response_body = self.get_static_file_content(request.path)
                     content_type = None
