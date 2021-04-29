@@ -57,14 +57,19 @@ class Worker(Thread):
             # レスポンスを生成する
             response = view(request)
 
-            # レスポンスラインを生成
-            response_line = self.build_response_line(response)
+            # レスポンスボディを変換
+            if isinstance(response.body, str):
+                response.body = response.body.encode()
 
             # レスポンスヘッダーを生成
             response_header = self.build_response_header(response, request)
 
+            # レスポンスラインを生成
+            response_line = self.build_response_line(response)
+
             # レスポンス全体を生成する
-            response_bytes = (response_line + response_header + "\r\n").encode() + response.body
+            response_bytes = (response_line + response_header +
+                              "\r\n").encode() + response.body
 
             # クライアントへレスポンスを送信する
             self.client_socket.send(response_bytes)
@@ -77,7 +82,8 @@ class Worker(Thread):
 
         finally:
             # 例外が発生した場合も、発生しなかった場合も、TCP通信のcloseは行う
-            print(f"=== Worker: クライアントとの通信を終了します remote_address: {self.client_address} ===")
+            print(
+                f"=== Worker: クライアントとの通信を終了します remote_address: {self.client_address} ===")
             self.client_socket.close()
 
     def parse_http_request(self, request: bytes) -> HTTPRequest:
@@ -120,11 +126,13 @@ class Worker(Thread):
             # pathから拡張子を取得
             if "." in request.path:
                 ext = request.path.rsplit(".", maxsplit=1)[-1]
+                # 拡張子からMIME Typeを取得
+                # 知らない対応していない拡張子の場合はoctet-streamとする
+                response.content_type = self.MIME_TYPES.get(
+                    ext, "application/octet-stream")
             else:
-                ext = ""
-            # 拡張子からMIME Typeを取得
-            # 知らない対応していない拡張子の場合はoctet-streamとする
-            response.content_type = self.MIME_TYPES.get(ext, "application/octet-stream")
+                # pathに拡張子がない場合はhtml扱いとする
+                response.content_type = "text/html; charset=UTF-8"
 
         response_header = ""
         response_header += f"Date: {datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')}\r\n"
@@ -132,5 +140,8 @@ class Worker(Thread):
         response_header += f"Content-Length: {len(response.body)}\r\n"
         response_header += "Connection: Close\r\n"
         response_header += f"Content-Type: {response.content_type}\r\n"
+
+        for header_name, header_value in response.headers.items():
+            response_header += f"{header_name}: {header_value}\r\n"
 
         return response_header

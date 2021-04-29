@@ -90,3 +90,6 @@ def user_profile(request: HTTPRequest) -> HTTPResponse:
 
     return HTTPResponse(body=body, content_type=content_type, status_code=status_code)
 
+
+def set_cookie(request: HTTPRequest) -> HTTPResponse:
+    return HTTPResponse(headers={"Set-Cookie": "username=TARO"})
